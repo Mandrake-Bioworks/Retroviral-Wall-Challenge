@@ -4,7 +4,7 @@
 
 A machine learning challenge by [Mandrake Bioworks](https://www.mandrakebio.com) — an AI-first gene editing company building the next generation of gene editing tools.
 
-📅 **Submissions close:** April 30, 2026
+📅 **Submissions close:** March 31, 2026
 🏆 **Details & prizes:** https://www.mandrakebio.com/Challenges/retroviral-wall/
 📧 **Submit to:** challenges@mandrakebio.com
 
@@ -141,7 +141,7 @@ embeddings = data['embeddings']  # (57, 1280) float32
 
 ## Evaluation
 
-### Stage 1: Cross-Validation (April 2026)
+### Stage 1: Cross-Validation (March 2026)
 
 All submissions evaluated on:
 
@@ -208,7 +208,7 @@ Here are the approaches we've tested on leave-one-family-out:
 
 ## Submission
 
-Email to **challenges@mandrakebio.com** by **April 30, 2026** with:
+Email to **challenges@mandrakebio.com** by **March 31, 2026** with:
 
 1. **Code** — Full runnable pipeline (notebook or scripts) with a `requirements.txt`. We must be able to reproduce your results.
 2. **Predictions CSV** — `rt_name`, `predicted_active`, `predicted_score`
