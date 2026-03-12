@@ -2,11 +2,11 @@
 
 **Can you predict which reverse transcriptases will work for prime editing — without memorising their evolutionary family?**
 
-A machine learning challenge by [Mandrake Bioworks](https://www.mandrakebio.com) — an AI-first gene editing company building the next generation of gene editing tools.
+A machine learning challenge by [Mandrake Bio](https://www.mandrakebio.com) — an AI-first gene editing company building the next generation of gene editing tools.
 
 📅 **Submissions close:** March 31, 2026
-🏆 **Details & prizes:** https://www.mandrakebio.com/Challenges/retroviral-wall/
-📧 **Submit to:** challenges@mandrakebio.com
+🏆 **Details & prizes:** https://www.mandrakebio.com/retroviral-wall-challenge/
+📋 **Submit here:** https://www.mandrakebio.com/retroviral-wall-challenge/#register-interest
 
 ---
 
@@ -208,7 +208,7 @@ Here are the approaches we've tested on leave-one-family-out:
 
 ## Submission
 
-Email to **challenges@mandrakebio.com** by **March 31, 2026** with:
+Submit through the **[official submission form](https://www.mandrakebio.com/retroviral-wall-challenge/#register-interest)** by **March 31, 2026** with:
 
 1. **Code** — Full runnable pipeline (notebook or scripts) with a `requirements.txt`. We must be able to reproduce your results.
 2. **Predictions CSV** — `rt_name`, `predicted_active`, `predicted_score`
@@ -260,7 +260,7 @@ Retroviral-Wall-Challenge/
 
 ## Compute Credits
 
-Have a compelling idea but need GPU resources to execute? Email us your proposed approach at challenges@mandrakebio.com. We provide compute credits on a case-by-case basis for ideas we find promising.
+Have a compelling idea but need GPU resources to execute? Reach out with your proposed approach through the [official challenge page](https://www.mandrakebio.com/retroviral-wall-challenge/#register-interest). We provide compute credits on a case-by-case basis for ideas we find promising.
 
 ---
 
@@ -272,4 +272,4 @@ Have a compelling idea but need GPU resources to execute? Email us your proposed
 
 ---
 
-*A challenge by [Mandrake Bioworks](https://www.mandrakebio.com) — making life programmable.*
+*A challenge by [Mandrake Bio](https://www.mandrakebio.com) — making life programmable.*
