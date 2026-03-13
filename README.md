@@ -28,9 +28,9 @@ The dataset comes from Doman et al. (2023), who experimentally tested 57 diverse
 
 ## Why This Is Hard
 
-This looks like a simple binary classification problem (57 samples, 98 features). It isn't.
+This looks like a simple binary classification problem (57 samples, 66 features). It isn't.
 
-Yes, 57 samples with 98 features is a small-data problem. Standard ML approaches will overfit. That's the point — we want to see who can extract real signal from limited, high-dimensional biological data. This mirrors the reality of experimental biology, where datasets are expensive and small. **Cracking small-data biological prediction is the actual challenge.**
+Yes, 57 samples with 66 features is a small-data problem. Standard ML approaches will overfit. That's the point — we want to see who can extract real signal from limited, high-dimensional biological data. This mirrors the reality of experimental biology, where datasets are expensive and small. **Cracking small-data biological prediction is the actual challenge.**
 
 The dataset has pathologies that will eat naive approaches alive:
 
@@ -61,10 +61,10 @@ This dataset goes beyond raw activity labels. We've enriched every RT using our 
 ```
 data/
 ├── rt_sequences.csv          # 57 RTs: name, sequence, active, PE efficiency, family
-├── handcrafted_features.csv  # 98 biophysical features per RT
+├── handcrafted_features.csv  # 66 biophysical features per RT
 ├── esm2_embeddings.npz       # ESM-2 1280-dim mean-pooled embeddings
 ├── family_splits.csv         # Family membership and class balance
-├── feature_dictionary.csv    # What each of the 98 features means
+├── feature_dictionary.csv    # What each of the 66 features means
 └── structures/               # ESMFold predicted 3D structures (57 PDB files)
 ```
 
@@ -95,25 +95,23 @@ You are free to use any additional tools, models, or databases — protein langu
 
 ### handcrafted_features.csv
 
-98 biophysical features computed from predicted structures and sequences, grouped into 15 categories:
+66 biophysical features computed from predicted structures and sequences, grouped into 13 categories:
 
 | Group | # Features | Description |
 |-------|-----------|-------------|
-| ESM-IF Perplexity | 2 | Inverse folding scores |
-| ProtParam | 8 | Physicochemical properties: MW, aromaticity, instability, pI, secondary structure fractions, hydropathy |
-| Net Charge | 5 | Charged residue counts and net charge at pH 7 |
-| Thermostability | 11 | Predicted fraction retaining structure at 40–80°C |
-| Asp Triad | 4 | Catalytic triad geometry |
-| Contacts | 11 | Structural contacts: hydrophobic, salt bridges, H-bonds |
-| Hydrophobicity | 5 | Hydrophobic residue distribution |
-| Hairpin | 9 | Beta-hairpin detection near active site |
-| Thumb Domain | 8 | Thumb subdomain surface charge |
-| DGR Motif | 1 | Presence of diversity-generating retroelement motif |
-| Procheck | 6 | Ramachandran quality and stereochemical G-factors |
-| CamSol Solubility | 5 | Intrinsic solubility predictions |
-| SASA | 5 | Solvent-accessible surface area of active-site residues |
-| Motif Secondary Structure | 8 | Secondary structure at conserved catalytic motifs |
-| FoldSeek Structural Alignment | 10 | TM-scores from structural alignment against reference RT crystal structures |
+| ESM-IF Scores | 2 | Inverse folding perplexity and log-likelihood |
+| Physicochemical | 3 | Instability index, hydropathy (GRAVY), helix-beta ratio |
+| Charge & Solubility | 2 | Net charge at pH 7, CamSol intrinsic solubility |
+| Thermostability | 10 | Predicted fraction retaining structure at 40–80°C, thermophilicity class |
+| Catalytic Triad | 4 | Triad detection, inter-residue distances, RMSD to HIV-RT |
+| Structural Contacts | 5 | Per-residue hydrophobic, salt bridge, and H-bond contacts (whole protein + pocket) |
+| Hydrophobicity | 5 | Mean, std, and fraction hydrophobic residues (whole protein + YXDD region) |
+| Active Site Geometry | 7 | YXDD motif secondary structure, beta-hairpin detection, motif sequence |
+| SASA | 5 | Per-residue SASA, apolar ratio, relative accessibility (whole + pocket + N-terminal) |
+| Ramachandran Quality | 2 | Favoured and outlier residue percentages |
+| Electrostatic Potentials | 8 | Mean surface potential across subdomains (overall, fingers, palm, thumb, connection, motifs) |
+| FoldSeek Structural Alignment | 10 | TM-scores to reference RT crystal structures across families |
+| Metadata | 3 | RT family, sequence length, resolved residue count |
 
 See `feature_dictionary.csv` for per-feature descriptions.
 
@@ -141,51 +139,59 @@ embeddings = data['embeddings']  # (57, 1280) float32
 
 ## Evaluation
 
-### Stage 1: Cross-Validation (March 2026)
+### Primary Metric: CLS (Cross-Lineage Score)
 
-All submissions evaluated on:
+All submissions are ranked by a single metric — **CLS** — that forces your model to solve two problems at once: classification and ranking.
 
-**Primary metric:** LOFO Macro-F1 across the 4 informative folds (Retroviral, Retron, LTR_Retrotransposon, Group_II_Intron). The three all-inactive families are excluded from the primary metric.
+```
+CLS = 2 × PR-AUC × WSpearman / (PR-AUC + WSpearman)
+```
 
-**Secondary:**
-- Retroviral fold TP/12 — the single most informative number for cross-family generalisation
-- LOO-CV F1 — within-distribution performance
+CLS is the harmonic mean of PR-AUC and Weighted Spearman. If either component is near zero, CLS collapses. You cannot compensate for terrible ranking with great classification, or vice versa. **Both problems must be solved.**
 
-**Bonus:**
-- Spearman's ρ and Kendall's τ on ranking active RTs by PE efficiency
+#### PR-AUC (Classification)
 
-Top submissions selected based on quantitative performance and methodological novelty.
+Precision-Recall Area Under Curve. How well do your predicted scores separate active RTs from inactive ones?
 
-### Stage 2: Proprietary Validation (Q2 2026)
+- **Precision:** Of the RTs you called active, how many actually are? (bench time efficiency)
+- **Recall:** Of all truly active RTs, how many did you catch? (discovery rate)
+- **Why PR-AUC?** The dataset is imbalanced — 21 active vs 36 inactive. A model predicting "everything inactive" gets 63% accuracy for free. PR-AUC focuses on finding the active RTs without false alarms.
+- Random baseline: ~0.37 (the base rate of active RTs)
 
-Finalist approaches will be run on Mandrake's internal experimental data — RT enzymes not in this dataset, tested in our lab. The final winner will be determined by generalisation to this unseen data.
+#### Weighted Spearman (Ranking)
+
+Among the RTs you score highly, are the best-performing ones actually ranked highest?
+
+- Weight per RT: `weight_i = pe_efficiency_i + ε` (ε = 0.1)
+- **MMLV (41% efficiency)** has weight 41.1 — getting its rank wrong is heavily penalized.
+- **Inactive RTs (0%)** have weight ~0.1 — their relative ranking barely matters.
+- A negative correlation (worse than random) is floored at 0.
+- Random baseline: ~0.000
 
 ### Leave-One-Family-Out (LOFO) Cross-Validation
+
+All predictions must be generated using LOFO cross-validation:
 
 ```
 For each of the 7 families:
     1. Hold out all RTs from that family as the test set
     2. Train on the remaining 6 families
-    3. Predict active/inactive for the held-out family
+    3. Predict on the held-out family
     4. Record predictions
 
-Aggregate all predictions across all 7 folds.
-Report: F1 (positive class), AUC-ROC, TP, FP, FN, TN
+The 7 folds produce 57 out-of-fold predictions (one per RT).
+PR-AUC and WSpearman are computed on these pooled predictions — not averaged per family.
 ```
 
-LOFO tests whether your model can generalise to an entirely unseen evolutionary lineage. A model that performs well on LOFO has learned something beyond family distribution.
+LOFO tests whether your model can generalise to an entirely unseen evolutionary lineage. When predicting Retroviral RTs, the model has never seen a Retroviral RT during training.
 
-That said, we are not dogmatic about LOFO being the only metric. Learning family-specific biophysical patterns is real biology, not cheating. A model that learns "within Retroviral RTs, these structural features distinguish active from inactive" has learned something genuinely useful.
+### Stage 1: Cross-Validation (March 2026)
 
-### Within-Family / Leave-One-Out CV
+Submissions are ranked by CLS on the 57 pooled LOFO predictions. Top submissions are selected based on quantitative performance and methodological novelty.
 
-Standard LOO-CV across all 57 RTs. This measures within-distribution performance, including the ability to discriminate active from inactive within the same family.
+### Stage 2: Proprietary Validation (Q2 2026)
 
-**Caveat:** LOO-CV alone can be inflated by family memorisation, which is why we ask for both LOO and LOFO results.
-
-### Ranking Quality
-
-For the 21 active RTs, how well does your predicted score rank them by actual PE efficiency? Report Spearman's ρ and Kendall's τ.
+Your Stage 1 model stays on the leaderboard. We re-evaluate it on ~40 new RT candidates with real wet-lab PE efficiency data from Mandrake's lab. The leaderboard is updated and winners are announced. You don't submit anything new — your model carries forward.
 
 ---
 
@@ -193,16 +199,15 @@ For the 21 active RTs, how well does your predicted score rank them by actual PE
 
 Here are the approaches we've tested on leave-one-family-out:
 
-| Approach | F1 | AUC | TP/21 | Retroviral TP/12 | Notes |
-|----------|-----|-----|-------|------------------|-------|
-| Predict all inactive | 0.000 | 0.500 | 0/21 | 0/12 | Trivial baseline |
-| ESM-2 + Ridge (α=1000) | 0.000 | 0.548 | 0/21 | 0/12 | Embeddings memorise family |
-| ESM-2 + RF (d=10) | 0.000 | 0.485 | 0/21 | 0/12 | Same problem |
-| HandCrafted + RF (d=10) | 0.533 | 0.777 | 8/21 | 2/12 | Best overall |
-| HandCrafted + LogReg (C=0.01) | 0.467 | 0.460 | 7/21 | 2/12 | |
-| PLS experts + RF | 0.533 | 0.495 | 8/21 | 2/12 | PLS compression doesn't help |
-| PLS + LightGBM LambdaRank | 0.524 | 0.759 | 11/21 | 6/12 | Best AUC, but 10 FPs |
-| Within-family pairwise SVM | 0.426 | 0.563 | 10/21 | 2/12 | More TPs, many more FPs |
+| Approach | PR-AUC | WSpearman | CLS | Notes |
+|----------|--------|-----------|-----|-------|
+| Predict all inactive | ~0.37 | 0.000 | 0.000 | Trivial baseline |
+| Random scores | ~0.37 | ~0.000 | ~0.000 | No signal |
+| ESM-2 + Ridge (α=1000) | 0.548 | 0.000 | 0.000 | Embeddings memorise family |
+| ESM-2 + RF (d=10) | 0.485 | 0.000 | 0.000 | Same problem |
+| HandCrafted + RF (d=10) | 0.596 | 0.217 | 0.318 | Current best |
+| HandCrafted + LogReg (C=0.01) | 0.460 | 0.000 | 0.000 | Classification only |
+| PLS + LightGBM LambdaRank | 0.659 | 0.000 | 0.000 | Best PR-AUC, but no ranking |
 
 ---
 
@@ -230,11 +235,10 @@ BLV-RT,0,0.12
 
 ## Rules
 
-1. **Report both LOFO and LOO-CV** — we want to see performance across families and within them.
-2. **Report the Retroviral fold separately** — TP/12 on this fold is the most informative single number.
-3. **External data allowed** — protein databases, language model embeddings, structural predictions, etc. Describe everything you used.
-4. **Reproducibility required** — the pipeline must be fully automated. We will run your code independently.
-5. **No manual curation of predictions.**
+1. **All predictions must use LOFO cross-validation** — 7 folds, 57 out-of-fold predictions. CLS is computed on the pooled predictions.
+2. **External data allowed** — protein databases, language model embeddings, structural predictions, etc. Describe everything you used.
+3. **Reproducibility required** — the pipeline must be fully automated. We will run your code independently.
+4. **No manual curation of predictions.**
 
 ---
 
