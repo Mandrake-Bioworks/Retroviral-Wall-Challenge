@@ -2,7 +2,7 @@
 """
 Official evaluation script for the RT Prime Editing Activity Prediction Challenge.
 
-Metric: CLS (Composite Leaderboard Score)
+Metric: CLS (Cross-Lineage Score)
 =========================================
 
     CLS = 2 * PR_AUC * WSpearman / (PR_AUC + WSpearman)

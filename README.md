@@ -162,9 +162,9 @@ Precision-Recall Area Under Curve. How well do your predicted scores separate ac
 
 Among the RTs you score highly, are the best-performing ones actually ranked highest?
 
-- Weight per RT: `weight_i = pe_efficiency_i + ε` (ε = 0.1)
-- **MMLV (41% efficiency)** has weight 41.1 — getting its rank wrong is heavily penalized.
-- **Inactive RTs (0%)** have weight ~0.1 — their relative ranking barely matters.
+- Weight per RT: `weight_i = pe_efficiency_i + ε` (ε = 0.01)
+- **MMLV (41% efficiency)** has weight ~41 — getting its rank wrong is heavily penalized.
+- **Inactive RTs (0%)** have weight ~0.01 — their relative ranking barely matters.
 - A negative correlation (worse than random) is floored at 0.
 - Random baseline: ~0.000
 
