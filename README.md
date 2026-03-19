@@ -1,4 +1,4 @@
-# Mandrake Open Problems #1: The Retroviral Wall
+# Mandrake Open Problems #1: Predict Prime Editing Activity
 
 **Can you predict which reverse transcriptases will work for prime editing — without memorising their evolutionary family?**
 
@@ -44,9 +44,9 @@ The goal is to ensure your model's performance isn't purely explained by family 
 
 21 active, 36 inactive. A model that predicts "inactive" for everything gets 63% accuracy. **Do not report accuracy alone.** F1 on the positive class is what matters.
 
-### Failure Mode 3: The Retroviral Wall
+### Failure Mode 3: The Retroviral Generalization Gap
 
-The Retroviral family contains 12 of 21 active RTs (57%). When held out during cross-validation, your model must predict Retroviral activity from patterns learned on non-retroviral families — which have only 9 active RTs across 3 families. **Breaking through this wall is the central challenge.**
+The Retroviral family contains 12 of 21 active RTs (57%). When held out during cross-validation, your model must predict Retroviral activity from patterns learned on non-retroviral families — which have only 9 active RTs across 3 families. **Generalizing across this gap is the central challenge.**
 
 ### Failure Mode 4: AUC on Single-Class Folds
 
