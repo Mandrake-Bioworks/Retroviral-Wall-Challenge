@@ -7,25 +7,39 @@ Metric: CLS (Composite Leaderboard Score)
 
     CLS = 2 * PR_AUC * WSpearman / (PR_AUC + WSpearman)
 
-CLS is the harmonic mean of two components:
+Evaluation scheme: Global Pooled Out-of-Fold (OOF)
+===================================================
 
-1. PR-AUC (Precision-Recall Area Under Curve)
-   - Measures how well predicted_score separates active from inactive RTs.
-   - Chosen over ROC-AUC because the dataset is imbalanced (21 active, 36 inactive).
-   - A trivial "predict all inactive" baseline gets PR-AUC ~ 0.37 (the base rate).
+Submissions are scored on LOFO (Leave-One-Family-Out) cross-validated predictions:
 
-2. Weighted Spearman (WSpearman)
-   - Measures how well predicted_score ranks RTs by PE efficiency.
-   - Each RT is weighted by (pe_efficiency_pct + 0.1).
-   - MMLV-RT (41% efficiency) has weight 41.1; inactive RTs have weight 0.1.
-   - This means correctly ranking the best RTs matters far more than ordering
-     the inactive ones.
-   - Computed as the weighted Pearson correlation of ranks.
+    1. Train 7 models, each holding out one of 7 evolutionary families.
+    2. For each fold, predict on the held-out family.
+    3. Concatenate all 7 sets into a single array of 57 predictions.
+       Every prediction was made by a model that never saw that RT's
+       evolutionary family during training.
+    4. Compute CLS once on this global 57-prediction array.
 
-Why harmonic mean?
-   - You cannot compensate for terrible ranking with great classification,
-     or vice versa. Both problems must be solved simultaneously.
-   - If either component is zero, CLS is zero.
+Why global pooling instead of per-fold averaging?
+    - 3 families (CRISPR-associated, Other, Unclassified) have 0 active RTs,
+      making per-fold PR-AUC undefined.
+    - Small folds (n=1 to n=5) produce noisy per-fold metrics.
+    - Global pooling computes on N=57 with 21 positives — stable and clean.
+
+Components:
+
+    PR-AUC (Precision-Recall Area Under Curve)
+        Measures separation of active vs inactive RTs.
+        Imbalance-aware (21 active, 36 inactive). Random baseline ~ 0.37.
+
+    Weighted Spearman
+        Weighted rank correlation between predicted_score and pe_efficiency_pct.
+        Weights = pe_efficiency_pct + epsilon (epsilon=0.01).
+        MMLV-RT (41%) has weight ~41; inactive RTs have weight ~0.01.
+        Correctly ranking the best RTs matters far more than ordering inactives.
+        Floored at 0 — negative correlation scores zero, not negative.
+
+    Harmonic Mean
+        Forces both components to be good. PR-AUC=0.9 + WSpearman=0.3 -> CLS=0.45.
 
 Usage:
     python evaluate.py --predictions path/to/predictions.csv
@@ -40,11 +54,10 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from sklearn.metrics import average_precision_score
-from scipy.stats import rankdata
 
 
 DATA_DIR = Path(__file__).parent.parent / "data"
-EPSILON = 0.1  # small constant so inactive RTs still have nonzero weight
+EPSILON = 0.01  # small constant so inactive RTs still have nonzero weight
 
 
 def load_ground_truth():
@@ -60,38 +73,39 @@ def weighted_spearman(predicted_scores, true_efficiency, weights):
     1. Rank both predicted_scores and true_efficiency.
     2. Compute weighted Pearson correlation of those ranks.
 
+    Ranking uses argsort(argsort(...)) which assigns unique integer ranks.
+
     Parameters
     ----------
     predicted_scores : array-like, shape (n,)
     true_efficiency  : array-like, shape (n,)
     weights          : array-like, shape (n,)
-        Per-sample weights. Higher weight = more important to rank correctly.
 
     Returns
     -------
     float : weighted Spearman correlation in [-1, 1]
     """
-    pred_ranks = rankdata(predicted_scores)
-    true_ranks = rankdata(true_efficiency)
+    pred_ranks = np.argsort(np.argsort(predicted_scores)).astype(float)
+    true_ranks = np.argsort(np.argsort(true_efficiency)).astype(float)
+
     w = np.asarray(weights, dtype=float)
+    w = w / w.sum()  # normalize to sum to 1
 
     # Weighted means
-    w_sum = w.sum()
-    mu_p = np.dot(w, pred_ranks) / w_sum
-    mu_t = np.dot(w, true_ranks) / w_sum
+    mu_p = np.dot(w, pred_ranks)
+    mu_t = np.dot(w, true_ranks)
 
-    # Weighted covariance and variances
+    # Weighted covariance and standard deviations
     dp = pred_ranks - mu_p
     dt = true_ranks - mu_t
-    cov = np.dot(w, dp * dt) / w_sum
-    var_p = np.dot(w, dp ** 2) / w_sum
-    var_t = np.dot(w, dt ** 2) / w_sum
+    cov = np.sum(w * dp * dt)
+    std_p = np.sqrt(np.sum(w * dp ** 2))
+    std_t = np.sqrt(np.sum(w * dt ** 2))
 
-    denom = np.sqrt(var_p * var_t)
-    if denom < 1e-12:
+    if std_p < 1e-12 or std_t < 1e-12:
         return 0.0
 
-    return cov / denom
+    return cov / (std_p * std_t)
 
 
 def compute_cls(y_true, y_score, pe_efficiency):
@@ -114,10 +128,10 @@ def compute_cls(y_true, y_score, pe_efficiency):
     # 2. Weighted Spearman
     weights = pe_efficiency + EPSILON
     w_spearman = weighted_spearman(y_score, pe_efficiency, weights)
-    w_spearman = max(w_spearman, 0.0)  # floor at 0 — negative correlation is no better than random
+    w_spearman = max(w_spearman, 0.0)  # floor at 0
 
     # 3. CLS (harmonic mean)
-    if pr_auc + w_spearman < 1e-12:
+    if pr_auc <= 0 or w_spearman <= 0:
         cls = 0.0
     else:
         cls = 2.0 * pr_auc * w_spearman / (pr_auc + w_spearman)
@@ -143,6 +157,9 @@ def evaluate(predictions_path):
         print(f"WARNING: {missing_preds} RTs have no prediction. Filling with 0.0.")
         merged["predicted_score"] = merged["predicted_score"].fillna(0.0)
 
+    if len(merged) != 57:
+        print(f"WARNING: Expected 57 RTs, got {len(merged)}.")
+
     y_true = merged["active"].values
     y_score = merged["predicted_score"].values.astype(float)
     pe_eff = merged["pe_efficiency_pct"].values.astype(float)
@@ -153,6 +170,8 @@ def evaluate(predictions_path):
     print("=" * 60)
     print("RT PRIME EDITING ACTIVITY PREDICTION — EVALUATION")
     print("=" * 60)
+    print()
+    print("  Global Pooled OOF scoring on 57 RTs")
     print()
     print(f"  PR-AUC:             {result['pr_auc']:.4f}")
     print(f"  Weighted Spearman:  {result['w_spearman']:.4f}")
@@ -187,7 +206,7 @@ if __name__ == "__main__":
         description="Evaluate predictions for the RT Prime Editing Activity Prediction Challenge (CLS metric)"
     )
     parser.add_argument(
-        "--predictions", required=True, help="Path to predictions CSV"
+        "--predictions", required=True, help="Path to predictions CSV (global pooled OOF)"
     )
     args = parser.parse_args()
     evaluate(args.predictions)
